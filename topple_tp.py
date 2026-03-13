@@ -32,6 +32,17 @@ NUMOBJ = numo
 NUMLOC = min(8, NUMOBJ)
 if len(sys.argv)>5:
     NUMLOC = int(sys.argv[5])
+# New optional CLI parameter: 0=multi-goal, 1=single-goal
+if len(sys.argv)>6:
+    SINGLE_GOAL = int(sys.argv[6])
+
+OUTPUT_YAML = 'my_problem.yaml'
+if len(sys.argv)>7:
+    OUTPUT_YAML = sys.argv[7]
+
+OUTPUT_SDF = 'my_blocks_world.sdf'
+if len(sys.argv)>8:
+    OUTPUT_SDF = sys.argv[8]
 TIMESTEPS = NUMOBJ*4+3#*NUMOBJ
 _infty = 100000
 _small_infty = 100
@@ -913,5 +924,5 @@ def generate_sdf(problem, pad_coords=PAD_COORDS, z_increment=0.05, file_name='bl
 # ADDED: write first-solution stats JSON before emitting YAML/SDF (same dir)
 _write_first_solution_stats_json("my_gurobi_first_solution.json")
 
-convert_to_yaml(problem, solactions, TIMESTEPS, 'my_problem.yaml')
-generate_sdf(problem, file_name='my_blocks_world.sdf')
+convert_to_yaml(problem, solactions, TIMESTEPS, OUTPUT_YAML)
+generate_sdf(problem, file_name=OUTPUT_SDF)
