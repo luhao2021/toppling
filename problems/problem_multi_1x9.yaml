@@ -1,0 +1,91 @@
+pads: 
+  1: {x:   0.42, y:  -0.30}
+  2: {x:   0.42, y:  -0.10}
+  3: {x:   0.42, y:   0.10}
+  4: {x:   0.42, y:   0.30}
+  5: {x:   0.30, y:  -0.30}
+  6: {x:   0.30, y:  -0.10}
+  7: {x:   0.30, y:   0.10}
+  8: {x:   0.30, y:   0.30}
+
+z_base:      0.025    # table + 1/2 block
+z_increment: 0.05     # full block height
+# ----------------------------------------------------------
+
+initial:
+  - {name: Red1, pad: 3, height: 1}
+  - {name: Red2, pad: 2, height: 3}
+  - {name: Red3, pad: 3, height: 0}
+  - {name: Green1, pad: 3, height: 3}
+  - {name: Green2, pad: 2, height: 2}
+  - {name: Green3, pad: 2, height: 1}
+  - {name: Blue1, pad: 1, height: 0}
+  - {name: Blue2, pad: 3, height: 2}
+  - {name: Blue3, pad: 2, height: 0}
+
+goal:
+  - {name: Red1, pad: 2, height: 0}
+  - {name: Red2, pad: 2, height: 1}
+  - {name: Red3, pad: 2, height: 2}
+  - {name: Green1, pad: 3, height: 0}
+  - {name: Green2, pad: 3, height: 1}
+  - {name: Green3, pad: 3, height: 2}
+  - {name: Blue1, pad: 4, height: 0}
+  - {name: Blue2, pad: 4, height: 1}
+  - {name: Blue3, pad: 4, height: 2}
+
+actions:     # ordered action sequence
+  - type:  Smash
+    blocks: [Red3, Red1, Blue2, Green1]
+    from: {pad: 3, height: 0}
+    dir:   +x
+
+  - type:  Smash
+    blocks: [Green3, Green2, Red2]
+    from: {pad: 2, height: 1}
+    dir:   +x
+
+  - type:  Move
+    block: Green3
+    from: {pad: 16, height: 0}
+    to:   {pad: 3, height: 0}
+
+  - type:  Move
+    block: Green1
+    from: {pad: 9, height: 0}
+    to:   {pad: 3, height: 1}
+
+  - type:  Move
+    block: Blue1
+    from: {pad: 1, height: 0}
+    to:   {pad: 4, height: 0}
+
+  - type:  Move
+    block: Blue2
+    from: {pad: 10, height: 0}
+    to:   {pad: 4, height: 1}
+
+  - type:  Move
+    block: Green2
+    from: {pad: 9, height: 0}
+    to:   {pad: 3, height: 2}
+
+  - type:  Move
+    block: Blue3
+    from: {pad: 2, height: 0}
+    to:   {pad: 4, height: 2}
+
+  - type:  Move
+    block: Red1
+    from: {pad: 15, height: 0}
+    to:   {pad: 2, height: 0}
+
+  - type:  Move
+    block: Red2
+    from: {pad: 12, height: 0}
+    to:   {pad: 2, height: 1}
+
+  - type:  Move
+    block: Red3
+    from: {pad: 3, height: 0}
+    to:   {pad: 2, height: 2}
