@@ -68,7 +68,6 @@ def parse_block_size(size_spec) -> float:
         return float(text)
     raise ValueError(f"Unsupported block size spec: {size_spec}")
 
-
 @dataclass
 class BlockInfo:
     tag_id: str
