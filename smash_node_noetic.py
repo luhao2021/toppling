@@ -22,14 +22,49 @@ from typing import Dict, List, Optional, Tuple
 import yaml
 
 try:
+    import numpy as np
     import rospy
     import moveit_commander
+    import tf
+    import tf.transformations as tft
     from geometry_msgs.msg import PoseStamped, Pose
-    from moveit_msgs.msg import CollisionObject
-    from shape_msgs.msg import SolidPrimitive
 except Exception:
+    np = None
     rospy = None
     moveit_commander = None
+    tf = None
+    tft = None
+
+
+def face_pose_to_cube_center(tag_id: int, face_pose: Pose, cube_size: float = 0.04) -> Pose:
+    face = tag_id % 6
+    offset = cube_size / 2.0
+
+    face_normals = {
+        0: np.array([0, 0, -1]),
+        1: np.array([-1, 0, 0]),
+        2: np.array([0, -1, 0]),
+        3: np.array([+1, 0, 0]),
+        4: np.array([0, +1, 0]),
+        5: np.array([0, 0, +1]),
+    }
+
+    normal_local = face_normals[face] * offset
+    q = [
+        face_pose.orientation.x,
+        face_pose.orientation.y,
+        face_pose.orientation.z,
+        face_pose.orientation.w,
+    ]
+    R = tft.quaternion_matrix(q)[0:3, 0:3]
+    normal_world = R.dot(normal_local)
+
+    center = Pose()
+    center.position.x = face_pose.position.x + normal_world[0]
+    center.position.y = face_pose.position.y + normal_world[1]
+    center.position.z = face_pose.position.z + normal_world[2]
+    center.orientation = face_pose.orientation
+    return center
 
 
 @dataclass
@@ -37,24 +72,89 @@ class BlockInfo:
     tag_id: str
     name: str
     size: float
-    pose: Pose
+    tag_pose: Pose
+    block_pose: Pose
 
 
 class AprilTagProvider:
-    """Adapter for real perception stack. Replace internals with your own sources."""
+    """Adapter for AprilTag perception using ROS TF."""
 
-    def __init__(self, tag_to_block: Dict[str, Tuple[str, str]]):
+    def __init__(self, tag_to_block: Dict[str, Tuple[str, float]]):
         self.tag_to_block = tag_to_block
+        self.listener = tf.TransformListener()
+
+    def _lookup_tag_pose(self, tag_frame: str) -> Optional[Pose]:
+        rate = rospy.Rate(10)
+        attempts = 0
+
+        while attempts < 10 and not rospy.is_shutdown():
+            try:
+                trans, rot = self.listener.lookupTransform('/world', '/' + tag_frame, rospy.Time(0))
+                pose = Pose()
+                pose.position.x = trans[0]
+                pose.position.y = trans[1]
+                pose.position.z = trans[2]
+                pose.orientation.x = rot[0]
+                pose.orientation.y = rot[1]
+                pose.orientation.z = rot[2]
+                pose.orientation.w = rot[3]
+                return pose
+            except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+                attempts += 1
+                rate.sleep()
+        return None
 
     def lookup_block(self, block_name: str) -> BlockInfo:
-        """
-        Return latest perceived block info for one block.
-        This is a stub by design and should be wired to your detector service/topic.
-        """
-        raise NotImplementedError("Integrate AprilTag lookup for block pose here.")
+        for tag_id, (name, size) in self.tag_to_block.items():
+            if name != block_name:
+                continue
+
+            frame = name
+            tag_pose = self._lookup_tag_pose(frame)
+            if tag_pose is None:
+                continue
+
+            cube_pose = face_pose_to_cube_center(int(tag_id), tag_pose)
+            return BlockInfo(
+                tag_id=str(tag_id),
+                name=block_name,
+                size=float(size),
+                tag_pose=tag_pose,
+                block_pose=cube_pose,
+            )
+
+        raise RuntimeError(f"Block '{block_name}' not detected.")
 
     def lookup_many(self, block_names: List[str]) -> Dict[str, BlockInfo]:
-        return {name: self.lookup_block(name) for name in block_names}
+        result: Dict[str, BlockInfo] = {}
+        for name in block_names:
+            try:
+                result[name] = self.lookup_block(name)
+            except RuntimeError:
+                pass
+        return result
+
+
+def create_tag_mapping() -> Dict[str, Tuple[str, float]]:
+    tag_to_block: Dict[str, Tuple[str, float]] = {}
+
+    block_names = [
+        'blue1',
+        'red1',
+        'green1',
+        'yellow1',
+        'orange1',
+        'blue2',
+    ]
+
+    tag_size = 0.023
+
+    for n, block in enumerate(block_names):
+        for i in range(6):
+            tag_id = 6 * n + i
+            tag_to_block[str(tag_id)] = (block, tag_size)
+
+    return tag_to_block
 
 
 class ToppleExecutor:
@@ -117,7 +217,7 @@ class ToppleExecutor:
     def upsert_block_collision(self, block: BlockInfo):
         self.scene.remove_world_object(block.name)
         rospy.sleep(0.05)
-        self.scene.add_box(block.name, self._pose_stamped(block.pose), (block.size, block.size, block.size))
+        self.scene.add_box(block.name, self._pose_stamped(block.block_pose), (block.size, block.size, block.size))
 
     def remove_blocks_from_scene(self, block_names: List[str]):
         for name in block_names:
@@ -255,7 +355,7 @@ def run_problem_once(yaml_path: str, executor: ToppleExecutor, provider: AprilTa
         if typ == "Move":
             name = action["block"]
             current = provider.lookup_block(name)
-            src = current.pose
+            src = current.block_pose
             to_pad = int(action["to"]["pad"])
             to_h = int(action["to"]["height"])
             dst = get_pose_from_pad(prob, to_pad, to_h)
@@ -269,7 +369,7 @@ def run_problem_once(yaml_path: str, executor: ToppleExecutor, provider: AprilTa
             blocks = list(action["blocks"])
             dirn = action.get("dir", "+x")
             base = blocks[0]  # bottom block according to YAML format
-            base_pose = provider.lookup_block(base).pose
+            base_pose = provider.lookup_block(base).block_pose
 
             executor.remove_blocks_from_scene(blocks)
             ok = executor.execute_smash(base_pose, dirn)
@@ -360,18 +460,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    # Example mapping. Replace with your real tag map.
-    tag_to_block = {
-        "tag1": ("red1", "5cm"),
-        "tag2": ("red2", "5cm"),
-        "tag3": ("red3", "5cm"),
-        "tag4": ("green1", "5cm"),
-        "tag5": ("green2", "5cm"),
-        "tag6": ("green3", "5cm"),
-        "tag7": ("blue1", "5cm"),
-        "tag8": ("blue2", "5cm"),
-        "tag9": ("blue3", "5cm"),
-    }
+    tag_to_block = create_tag_mapping()
     provider = AprilTagProvider(tag_to_block)
     executor = ToppleExecutor(group_name=args.group, ee_link=args.ee_link)
 
