@@ -66,6 +66,27 @@ def face_pose_to_cube_center(tag_id: int, face_pose: Pose, cube_size: float = 0.
     center.orientation = face_pose.orientation
     return center
 
+def update_height(height: float, block_size: float, offset: float = 0.001) -> float:
+    z_base = block_size / 2.0
+    z_inc = block_size
+    level = int(round((height - z_base) / z_inc))
+    z_updated = round(z_base + level * z_inc, 3)
+    z_updated = z_updated + level * offset
+    return z_updated
+
+
+def parse_block_size(size_spec) -> float:
+    if isinstance(size_spec, (int, float)):
+        return float(size_spec)
+    if isinstance(size_spec, str):
+        text = size_spec.strip().lower()
+        if text.endswith('cm'):
+            return float(text[:-2]) / 100.0
+        if text.endswith('m'):
+            return float(text[:-1])
+        return float(text)
+    raise ValueError(f"Unsupported block size spec: {size_spec}")
+
 
 @dataclass
 class BlockInfo:
@@ -114,11 +135,13 @@ class AprilTagProvider:
             if tag_pose is None:
                 continue
 
-            cube_pose = face_pose_to_cube_center(int(tag_id), tag_pose)
+            block_size = parse_block_size(size)
+            cube_pose = face_pose_to_cube_center(int(tag_id), tag_pose, cube_size=block_size)
+            cube_pose.position.z = update_height(cube_pose.position.z, block_size=block_size, offset=0.001)
             return BlockInfo(
                 tag_id=str(tag_id),
                 name=block_name,
-                size=float(size),
+                size=block_size,
                 tag_pose=tag_pose,
                 block_pose=cube_pose,
             )
@@ -138,6 +161,16 @@ class AprilTagProvider:
 def create_tag_mapping() -> Dict[str, Tuple[str, float]]:
     tag_to_block: Dict[str, Tuple[str, float]] = {}
 
+    # Static block-size map in meters. Edit this map to match your physical setup.
+    block_size_map = {
+        'blue1': '5cm',
+        'red1': '4cm',
+        'green1': '5cm',
+        'yellow1': '5cm',
+        'orange1': '5cm',
+        'blue2': '5cm',
+    }
+
     block_names = [
         'blue1',
         'red1',
@@ -147,12 +180,11 @@ def create_tag_mapping() -> Dict[str, Tuple[str, float]]:
         'blue2',
     ]
 
-    tag_size = 0.023
-
     for n, block in enumerate(block_names):
+        block_size = parse_block_size(block_size_map[block])
         for i in range(6):
             tag_id = 6 * n + i
-            tag_to_block[str(tag_id)] = (block, tag_size)
+            tag_to_block[str(tag_id)] = (block, block_size)
 
     return tag_to_block
 
